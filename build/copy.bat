@@ -36,6 +36,16 @@ COPY %FROM%\node_modules\less\lib\less\* %DIST%\node_modules\less\lib\less
 COPY %FROM%\node_modules\less\lib\less\tree\* %DIST%\node_modules\less\lib\less\tree
 COPY %FROM%\node_modules\less\package.json %DIST%\node_modules\less
 
+MD %DIST%\node_modules\handlebars\bin %DIST%\node_modules\handlebars\lib\handlebars %DIST%\node_modules\handlebars\lib\handlebars\compiler %DIST%\node_modules\handlebars\node_modules\.bin %DIST%\node_modules\handlebars\node_modules\optimist %DIST%\node_modules\handlebars\node_modules\uglify-js
+COPY %FROM%\node_modules\handlebars\bin\* %DIST%\node_modules\handlebars\bin
+COPY %FROM%\node_modules\handlebars\lib\* %DIST%\node_modules\handlebars\lib
+COPY %FROM%\node_modules\handlebars\lib\handlebars\* %DIST%\node_modules\handlebars\lib\handlebars
+COPY %FROM%\node_modules\handlebars\lib\handlebars\compiler\* %DIST%\node_modules\handlebars\lib\handlebars\compiler
+COPY %FROM%\node_modules\handlebars\node_modules\.bin\* %DIST%\node_modules\handlebars\node_modules\.bin
+COPY %FROM%\node_modules\handlebars\node_modules\optimist\* %DIST%\node_modules\handlebars\node_modules\optimist
+COPY %FROM%\node_modules\handlebars\node_modules\uglify-js\* %DIST%\node_modules\handlebars\node_modules\uglify-js
+COPY %FROM%\node_modules\handlebars\package.json %DIST%\node_modules\handlebars
+
 MD %DIST%\node_modules\stylus
 XCOPY %FROM%\node_modules\stylus %DIST%\node_modules\stylus /s /e
 

@@ -26,10 +26,10 @@ SOFTWARE.
 // with an exit code that will be identified as a failure by most
 // windows build systems
 
-// process.on("uncaughtException", function (err) {
-//     console.error(err);
-//     process.exit(1);
-// });
+process.on("uncaughtException", function (err) {
+    console.error(err);
+    process.exit(1);
+});
 
 function clone(o) {
   var ret = {};
@@ -79,6 +79,7 @@ var fs = require("fs"),
     livescript = require('livescript'),
     CleanCss = require('clean-css'),
     Step = require('step'),
+    handlebars = require('handlebars')
     startedAt = Date.now();
 
 var walk = function (dir, done) {
@@ -128,6 +129,7 @@ function scanDir(allFiles, cb) {
 
     var jsBundles  = allFiles.filter(function (file) { return file.endsWith(".js.bundle"); });
     var cssBundles = allFiles.filter(function (file) { return file.endsWith(".css.bundle"); });
+    var handlebarsBundles = allFiles.filter(function (file) { return file.endsWith(".handlebars.bundle"); });
 
     function getOptions(fileLines) {
         var options = clone(defaultOptions);
@@ -204,6 +206,36 @@ function scanDir(allFiles, cb) {
             };
             nextBundle();
         },
+        function () {
+            var next = this;
+            var index = 0;
+            var nextBundle = function () {
+                if (index < handlebarsBundles.length)
+                    processBundle(handlebarsBundles[index++]);
+                else
+                    next();
+            };
+            function processBundle(handlebarsBundle) {
+                var bundleDir = path.dirname(handlebarsBundle);
+                var bundleName = handlebarsBundle.replace('.bundle', '');
+                readTextFile(handlebarsBundle, function (data) {
+                    var handlebarsFiles = removeCR(data).split("\n");
+                    var options = getOptions(handlebarsFiles);
+                    if (options.folder !== undefined) {
+                        options.nobundle = true;
+                        var recursive = options.folder === 'recursive';
+                        handlebarsFiles = allFiles.map(function handlebarsMatches(fileName) {
+                            if (!fileName.startsWith(bundleDir)) return '#';
+                            if (!fileName.endsWithAny(['.handlebars', '.hbs', '.template', '.tmpl'])) return '#';
+                            if (!recursive && (path.dirname(fileName) !== bundleDir)) return '#';
+                            return fileName.substring(bundleDir.length + 1);
+                        });
+                    }
+                    processHandlebarsBundle(options, handlebarsBundle, bundleDir, handlebarsFiles, bundleName, nextBundle);
+                });
+            };
+            nextBundle();
+        },
         cb
     );
 }
@@ -214,6 +246,7 @@ function getMinFileName(fileName) {
 }
 
 function processJsBundle(options, jsBundle, bundleDir, jsFiles, bundleName, cb) {
+    var processedFiles = {};
 
     console.log("\nprocessing " + jsBundle + ":");
     for (var optionKey in options) {
@@ -251,18 +284,22 @@ function processJsBundle(options, jsBundle, bundleDir, jsFiles, bundleName, cb) 
         if (!(file = file.trim())
             || (file.startsWith(".") && !file.startsWith(".."))
             || file.startsWith('#'))
+            || processedFiles[file])
             return;
+
+        processedFiles[file] = true;
 
         var isCoffee = file.endsWith(".coffee");
         var isLiveScript = file.endsWith(".ls");
-        var jsFile = isCoffee ?
-            file.replace(".coffee", ".js")
-    		: isLiveScript ?
-            file.replace(".ls", ".js") :
-            file;
+        var isHandlebars = file.endsWith(".handlebars");
+        var jsFile = isCoffee ? file.replace(".coffee", ".js")
+                : isLiveScript ? file.replace(".ls", ".js")
+                : isMustache ? file.replace(".mustache", ".js")
+                : file;
 
         var filePath = path.join(bundleDir, file),
               jsPath = path.join(bundleDir, jsFile),
+              jsPathOutput = bundleFileUtility.getOutputFilePath(bundleName, jsPath, options),
            minJsPath = getMinFileName(jsPath);
 
         var i = index++;
@@ -278,9 +315,22 @@ function processJsBundle(options, jsBundle, bundleDir, jsFiles, bundleName, cb) 
                     readTextFile(filePath, function(livescriptText){
                         getOrCreateJsLiveScript(options, livescriptText, filePath, jsPath, next);
                     });
+                } else if(isHandlebars){
+                    jsPath = jsPathOutput;
+                    readTextFile(filePath, function(hbsText) {
+                        // if(options.outputbundlestats) {
+                        //     bundleStatsCollector.ParseMustacheForStats(jsBundle, hbsText);
+                        // }
+
+                        getOrCreateJsHandlebars(options, hbsText, filePath, jsPathOutput, next);
+                    });  
                 } else {
                     readTextFile(jsPath, next);
                 }
+
+                // if(options.outputbundlestats) {
+                //     bundleStatsCollector.AddDebugFile(jsBundle, jsPath);
+                // }
             },
             function (js) {
                 allJsArr[i] = js;
@@ -413,6 +463,20 @@ function getOrCreateMinJs(options, js, jsPath, minJsPath, cb /*cb(minJs)*/) {
     }, js, jsPath, minJsPath, cb);
 }
 
+function getOrCreateJsHandlebars(options, hbsText, mPath, jsPath, cb /*cb(js)*/) {
+    compileAsync(options, "precompiling", function (hbsText, mPath, cb) {
+            var templateName = path.basename(mPath, path.extname(mPath));
+            var precompiledTemplate = handlebars.precompile(hbsText, {
+                { knownHelpers : ['t', 'eachkeys', 'ifCond', 'debug', 'first'], knownHelpersOnly: false }
+            });
+            var compiledTemplate = "window[\"JST\"] = window[\"JST\"] || {};"
+                        + " JST['"
+                        + templateName
+                        + "'] = new Handlebars.template("+ precompiledTemplate + ");";
+            cb(compiledTemplate);
+        }, hbsText, mPath, jsPath, cb);
+}
+
 function getOrCreateLessCss(options, less, lessPath, cssPath, cb /*cb(css)*/) {
     compileAsync(options, "compiling", compileLess, less, lessPath, cssPath, cb);
 }
@@ -506,6 +570,8 @@ function compileLess(lessCss, lessPath, cb) {
         cb(css);
     });
 }
+
+function compileHandlebars()
 
 function minifyjs(js) {
     var ast = jsp.parse(js);
